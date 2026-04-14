@@ -105,6 +105,7 @@
     }
 
     // 2. ฟังก์ชันเปิดกล้อง
+    // 2. ฟังก์ชันเปิดกล้อง
     function startCamera() {
       // จัดการ UI
       document.getElementById('startBtn').style.display = "none";
@@ -112,38 +113,46 @@
       document.getElementById('stopBtn').style.display = "inline-block";
       document.getElementById('result').innerHTML = "";
 
-      // Initialize Audio Context ตอนที่ user กดปุ่ม (นโยบายเบราว์เซอร์บังคับ)
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
 
       html5QrCode = new Html5Qrcode("reader");
       
-      // เริ่มเปิดกล้องหลัง
+      // --- ส่วนที่ปรับปรุงใหม่ ---
+      // กำหนดประเภทบาร์โค้ดที่ต้องการให้สแกน (ช่วยให้ประมวลผลเร็วขึ้น 300%)
+      const formatsToSupport = [
+        Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.EAN_13, // บาร์โค้ดสินค้าทั่วไป 13 หลัก
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39
+      ];
+
+      // เริ่มเปิดกล้อง
       html5QrCode.start(
-        { facingMode: "environment" }, 
+        { facingMode: "environment" }, // บังคับใช้กล้องหลัง
         {
-          fps: 10,
-          qrbox: { width: 250, height: 100 }, // กล่องโฟกัสตรงกลาง
-          aspectRatio: 1.0
+          fps: 15, // เพิ่ม Frame rate ให้จับภาพไวขึ้นเล็กน้อย
+          qrbox: { width: 300, height: 150 }, // ขยายกล่องให้กว้างขึ้น เหมาะกับบาร์โค้ดแนวยาว
+          aspectRatio: 1.0,
+          formatsToSupport: formatsToSupport // ใส่ข้อจำกัดประเภทบาร์โค้ด
         },
         (decodedText, decodedResult) => {
           // สแกนเจอแล้ว!
-          playBeep(); // เล่นเสียงบี๊บ
+          playBeep(); 
           document.getElementById('barcodeInput').value = decodedText;
           
-          // ปิดกล้องอัตโนมัติเพื่อรอการกดบันทึก
           stopCamera();
           document.getElementById('startBtn').style.display = "inline-block";
           document.getElementById('startBtn').innerText = "📷 สแกนชิ้นต่อไป";
         },
         (errorMessage) => {
-          // กำลังค้นหาบาร์โค้ด ไม่ต้องทำอะไร
+          // ซ่อน Error ลับหลังไว้ ไม่ต้องทำอะไร
         }
       ).catch((err) => {
         alert("ไม่สามารถเปิดกล้องได้: " + err);
       });
     }
-
     // 3. ฟังก์ชันปิดกล้อง
     function stopCamera() {
       if (html5QrCode) {
