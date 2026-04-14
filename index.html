@@ -1,195 +1,116 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <base target="_top">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: sans-serif; text-align: center; padding: 10px; background-color: #f9f9f9; }
-    
-    /* กรอบสำหรับใส่กล้องและเส้นเลเซอร์ */
-    #scanner-container {
-      position: relative;
-      width: 100%;
-      max-width: 350px;
-      margin: 0 auto;
-      border-radius: 10px;
-      overflow: hidden;
-      display: none; /* ซ่อนไว้ก่อนจนกว่าจะกดปุ่ม */
-      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
+// Assisted by Gemini
+let html5QrCode;
+let audioCtx;
 
-    /* เส้นเลเซอร์สีแดง */
-    #laser-line {
-      position: absolute;
-      top: 50%;
-      left: 10%;
-      width: 80%;
-      height: 2px;
-      background-color: red;
-      box-shadow: 0 0 10px red, 0 0 20px red;
-      z-index: 10;
-      /* อนิเมชันขยับขึ้นลง */
-      animation: scan 2s infinite alternate ease-in-out;
-    }
-
-    @keyframes scan {
-      0% { top: 20%; opacity: 0; }
-      10% { opacity: 1; }
-      90% { opacity: 1; }
-      100% { top: 80%; opacity: 0; }
-    }
-
-    input, button { padding: 12px; margin: 8px 0; width: 100%; max-width: 300px; font-size: 16px; border-radius: 8px; box-sizing: border-box;}
-    input { border: 1px solid #ccc; }
-    #result { color: green; font-weight: bold; margin-top: 15px; }
-    .btn-primary { background-color: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
-    .btn-success { background-color: #28a745; color: white; border: none; cursor: pointer; font-weight: bold; }
-  </style>
-  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-</head>
-<body>
-
-  <h2>📱 POS Scanner</h2>
+// 1. ฟังก์ชันสร้างเสียงบี๊บ (ดี้ด!)
+function playBeep() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  const oscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
   
-  <button id="startBtn" class="btn-primary" onclick="startCamera()">
-    📷 เปิดกล้องสแกน
-  </button>
-
-  <div id="scanner-container">
-    <div id="laser-line"></div>
-    <div id="reader"></div>
-  </div>
-
-  <button id="stopBtn" class="btn-primary" style="display:none; background-color: #dc3545;" onclick="stopCamera()">
-    ปิดกล้อง
-  </button>
-
-  <div style="margin-top: 20px;">
-    <input type="text" id="barcodeInput" placeholder="รหัสบาร์โค้ด" readonly style="background-color: #e9ecef;">
-    <br>
-    <input type="number" id="qtyInput" placeholder="จำนวน" value="1">
-    <br>
-    <button class="btn-success" onclick="submitData()">💾 บันทึกรายการ</button>
-  </div>
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
   
-  <div id="result"></div>
+  oscillator.type = 'sine'; 
+  oscillator.frequency.value = 1200; 
+  
+  gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+  
+  oscillator.start(audioCtx.currentTime);
+  oscillator.stop(audioCtx.currentTime + 0.1); 
+}
 
-  <script>
-    // Assisted by Gemini
-    let html5QrCode;
-    let audioCtx;
+// 2. ฟังก์ชันเปิดกล้อง
+function startCamera() {
+  document.getElementById('startBtn').style.display = "none";
+  document.getElementById('scanner-container').style.display = "block";
+  document.getElementById('stopBtn').style.display = "inline-block";
+  document.getElementById('result').innerHTML = "";
 
-    // 1. ฟังก์ชันสร้างเสียงบี๊บ (ดี้ด!)
-    function playBeep() {
-      // สร้าง Audio Context (ถ้ายังไม่มี)
-      if (!audioCtx) {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      }
-      // สร้างตัวกำเนิดเสียง (Oscillator)
-      const oscillator = audioCtx.createOscillator();
-      const gainNode = audioCtx.createGain();
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  html5QrCode = new Html5Qrcode("reader");
+  
+  // เริ่มเปิดกล้อง
+  html5QrCode.start(
+    { facingMode: "environment" }, 
+    {
+      fps: 10, 
+      // ปรับขนาดกล่องให้เล็กลง เพื่อไม่ให้ล้นจอมือถือ
+      qrbox: { width: 250, height: 100 }, 
+      // เอา aspectRatio ออก เพื่อให้กล้องปรับสัดส่วนตามหน้าจอมือถืออัตโนมัติ ภาพจะได้ไม่ยืด
+      // เอา formatsToSupport ออกชั่วคราว เพื่อให้ระบบยอมรับบาร์โค้ดทุกรูปแบบบนโลก จะได้สแกนติดง่ายที่สุด
+    },
+    (decodedText, decodedResult) => {
+      // ✅ สแกนเจอแล้ว!
+      playBeep(); 
+      document.getElementById('barcodeInput').value = decodedText;
       
-      oscillator.connect(gainNode);
-      gainNode.connect(audioCtx.destination);
-      
-      oscillator.type = 'sine'; // ชนิดคลื่นเสียง
-      oscillator.frequency.value = 1200; // ความถี่เสียง (Hz) ยิ่งมากยิ่งแหลม
-      
-      // ตั้งค่าความดังและให้ค่อยๆ เฟดออก
-      gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
-      
-      oscillator.start(audioCtx.currentTime);
-      oscillator.stop(audioCtx.currentTime + 0.1); // ดังกริ๊กเดียว 0.1 วินาที
+      stopCamera();
+      document.getElementById('startBtn').style.display = "inline-block";
+      document.getElementById('startBtn').innerText = "📷 สแกนชิ้นต่อไป";
+    },
+    (errorMessage) => {
+      // ซ่อน Error กำลังค้นหา
     }
+  ).catch((err) => {
+    alert("ไม่สามารถเปิดกล้องได้: " + err);
+  });
+}
 
-    // 2. ฟังก์ชันเปิดกล้อง
-    // 2. ฟังก์ชันเปิดกล้อง
-    function startCamera() {
-      // จัดการ UI
-      document.getElementById('startBtn').style.display = "none";
-      document.getElementById('scanner-container').style.display = "block";
-      document.getElementById('stopBtn').style.display = "inline-block";
-      document.getElementById('result').innerHTML = "";
+// 3. ฟังก์ชันปิดกล้อง
+function stopCamera() {
+  if (html5QrCode) {
+    html5QrCode.stop().then(() => {
+      document.getElementById('scanner-container').style.display = "none";
+      document.getElementById('stopBtn').style.display = "none";
+      document.getElementById('startBtn').style.display = "inline-block";
+    }).catch((err) => {
+      console.error("Failed to stop camera.", err);
+    });
+  }
+}
 
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+// 4. ฟังก์ชันส่งข้อมูล (ปรับเป็น Fetch API สำหรับใช้บน GitHub Pages)
+function submitData() {
+  const barcode = document.getElementById('barcodeInput').value;
+  const qty = document.getElementById('qtyInput').value;
+  const resultDiv = document.getElementById('result');
 
-      html5QrCode = new Html5Qrcode("reader");
-      
-      // --- ส่วนที่ปรับปรุงใหม่ ---
-      // กำหนดประเภทบาร์โค้ดที่ต้องการให้สแกน (ช่วยให้ประมวลผลเร็วขึ้น 300%)
-      const formatsToSupport = [
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.EAN_13, // บาร์โค้ดสินค้าทั่วไป 13 หลัก
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39
-      ];
+  if (!barcode) {
+    resultDiv.style.color = "red";
+    resultDiv.innerHTML = "❌ กรุณาสแกนบาร์โค้ดก่อน";
+    return;
+  }
 
-      // เริ่มเปิดกล้อง
-      html5QrCode.start(
-        { facingMode: "environment" }, // บังคับใช้กล้องหลัง
-        {
-          fps: 15, // เพิ่ม Frame rate ให้จับภาพไวขึ้นเล็กน้อย
-          qrbox: { width: 300, height: 150 }, // ขยายกล่องให้กว้างขึ้น เหมาะกับบาร์โค้ดแนวยาว
-          aspectRatio: 1.0,
-          formatsToSupport: formatsToSupport // ใส่ข้อจำกัดประเภทบาร์โค้ด
-        },
-        (decodedText, decodedResult) => {
-          // สแกนเจอแล้ว!
-          playBeep(); 
-          document.getElementById('barcodeInput').value = decodedText;
-          
-          stopCamera();
-          document.getElementById('startBtn').style.display = "inline-block";
-          document.getElementById('startBtn').innerText = "📷 สแกนชิ้นต่อไป";
-        },
-        (errorMessage) => {
-          // ซ่อน Error ลับหลังไว้ ไม่ต้องทำอะไร
-        }
-      ).catch((err) => {
-        alert("ไม่สามารถเปิดกล้องได้: " + err);
-      });
-    }
-    // 3. ฟังก์ชันปิดกล้อง
-    function stopCamera() {
-      if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-          document.getElementById('scanner-container').style.display = "none";
-          document.getElementById('stopBtn').style.display = "none";
-          document.getElementById('startBtn').style.display = "inline-block";
-        }).catch((err) => {
-          console.error("Failed to stop camera.", err);
-        });
-      }
-    }
+  resultDiv.style.color = "blue";
+  resultDiv.innerHTML = "กำลังบันทึกข้อมูล...";
 
-    // 4. ฟังก์ชันส่งข้อมูลไปที่ Code.gs
-    function submitData() {
-      const barcode = document.getElementById('barcodeInput').value;
-      const qty = document.getElementById('qtyInput').value;
-      const resultDiv = document.getElementById('result');
+  // 🔴 นำ URL ของ Web App (Google Apps Script) มาใส่ตรงนี้
+  const GOOGLE_APP_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyeNKqLf0bcHQGAUKJo9xgsx9vc2jp_CHUFI7N2B1snrq9k4JNcTr5umlblFKBp-1YJ2Q/exec";
 
-      if (!barcode) {
-        resultDiv.style.color = "red";
-        resultDiv.innerHTML = "❌ กรุณาสแกนบาร์โค้ดก่อน";
-        return;
-      }
+  // เช็คว่าถ้ายังไม่ได้ใส่ URL ให้เตือนก่อน
+  if (GOOGLE_APP_SCRIPT_URL.includes("นำ_URL")) {
+    resultDiv.style.color = "red";
+    resultDiv.innerHTML = "❌ กรุณาใส่ URL ของ Google Apps Script ในโค้ดก่อนครับ";
+    return;
+  }
 
-      resultDiv.style.color = "blue";
-      resultDiv.innerHTML = "กำลังบันทึกข้อมูล...";
-
-      google.script.run
-        .withSuccessHandler(function(response) {
-          resultDiv.style.color = "green";
-          resultDiv.innerHTML = "✅ " + response;
-          document.getElementById('barcodeInput').value = ""; 
-          document.getElementById('qtyInput').value = "1";
-        })
-        .saveOrder(barcode, qty);
-    }
-  </script>
-</body>
-</html>
+  // ส่งข้อมูลข้ามโดเมนไปหา Google Sheets
+  fetch(`${GOOGLE_APP_SCRIPT_URL}?barcode=${barcode}&qty=${qty}`)
+    .then(response => response.text())
+    .then(data => {
+      resultDiv.style.color = "green";
+      resultDiv.innerHTML = "✅ บันทึกข้อมูลสำเร็จ";
+      document.getElementById('barcodeInput').value = ""; 
+      document.getElementById('qtyInput').value = "1";
+    })
+    .catch(error => {
+      resultDiv.style.color = "red";
+      resultDiv.innerHTML = "❌ บันทึกข้อมูลล้มเหลว (เช็คการตั้งค่า Apps Script)";
+    });
+}
