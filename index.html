@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 10px; background-color: #f9f9f9; }
+    
+    /* กรอบสำหรับใส่กล้องและเส้นเลเซอร์ */
+    #scanner-container {
+      position: relative;
+      width: 100%;
+      max-width: 350px;
+      margin: 0 auto;
+      border-radius: 10px;
+      overflow: hidden;
+      display: none; /* ซ่อนไว้ก่อนจนกว่าจะกดปุ่ม */
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    /* เส้นเลเซอร์สีแดง */
+    #laser-line {
+      position: absolute;
+      top: 50%;
+      left: 10%;
+      width: 80%;
+      height: 2px;
+      background-color: red;
+      box-shadow: 0 0 10px red, 0 0 20px red;
+      z-index: 10;
+      /* อนิเมชันขยับขึ้นลง */
+      animation: scan 2s infinite alternate ease-in-out;
+    }
+
+    @keyframes scan {
+      0% { top: 20%; opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { top: 80%; opacity: 0; }
+    }
+
+    input, button { padding: 12px; margin: 8px 0; width: 100%; max-width: 300px; font-size: 16px; border-radius: 8px; box-sizing: border-box;}
+    input { border: 1px solid #ccc; }
+    #result { color: green; font-weight: bold; margin-top: 15px; }
+    .btn-primary { background-color: #007bff; color: white; border: none; cursor: pointer; font-weight: bold; }
+    .btn-success { background-color: #28a745; color: white; border: none; cursor: pointer; font-weight: bold; }
+  </style>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+<body>
+
+  <h2>📱 POS Scanner</h2>
+  
+  <button id="startBtn" class="btn-primary" onclick="startCamera()">
+    📷 เปิดกล้องสแกน
+  </button>
+
+  <div id="scanner-container">
+    <div id="laser-line"></div>
+    <div id="reader"></div>
+  </div>
+
+  <button id="stopBtn" class="btn-primary" style="display:none; background-color: #dc3545;" onclick="stopCamera()">
+    ปิดกล้อง
+  </button>
+
+  <div style="margin-top: 20px;">
+    <input type="text" id="barcodeInput" placeholder="รหัสบาร์โค้ด" readonly style="background-color: #e9ecef;">
+    <br>
+    <input type="number" id="qtyInput" placeholder="จำนวน" value="1">
+    <br>
+    <button class="btn-success" onclick="submitData()">💾 บันทึกรายการ</button>
+  </div>
+  
+  <div id="result"></div>
+
+  <script>
+    // Assisted by Gemini
+    let html5QrCode;
+    let audioCtx;
+
+    // 1. ฟังก์ชันสร้างเสียงบี๊บ (ดี้ด!)
+    function playBeep() {
+      // สร้าง Audio Context (ถ้ายังไม่มี)
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      // สร้างตัวกำเนิดเสียง (Oscillator)
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.type = 'sine'; // ชนิดคลื่นเสียง
+      oscillator.frequency.value = 1200; // ความถี่เสียง (Hz) ยิ่งมากยิ่งแหลม
+      
+      // ตั้งค่าความดังและให้ค่อยๆ เฟดออก
+      gainNode.gain.setValueAtTime(1, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+      
+      oscillator.start(audioCtx.currentTime);
+      oscillator.stop(audioCtx.currentTime + 0.1); // ดังกริ๊กเดียว 0.1 วินาที
+    }
+
+    // 2. ฟังก์ชันเปิดกล้อง
+    function startCamera() {
+      // จัดการ UI
+      document.getElementById('startBtn').style.display = "none";
+      document.getElementById('scanner-container').style.display = "block";
+      document.getElementById('stopBtn').style.display = "inline-block";
+      document.getElementById('result').innerHTML = "";
+
+      // Initialize Audio Context ตอนที่ user กดปุ่ม (นโยบายเบราว์เซอร์บังคับ)
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      html5QrCode = new Html5Qrcode("reader");
+      
+      // เริ่มเปิดกล้องหลัง
+      html5QrCode.start(
+        { facingMode: "environment" }, 
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 100 }, // กล่องโฟกัสตรงกลาง
+          aspectRatio: 1.0
+        },
+        (decodedText, decodedResult) => {
+          // สแกนเจอแล้ว!
+          playBeep(); // เล่นเสียงบี๊บ
+          document.getElementById('barcodeInput').value = decodedText;
+          
+          // ปิดกล้องอัตโนมัติเพื่อรอการกดบันทึก
+          stopCamera();
+          document.getElementById('startBtn').style.display = "inline-block";
+          document.getElementById('startBtn').innerText = "📷 สแกนชิ้นต่อไป";
+        },
+        (errorMessage) => {
+          // กำลังค้นหาบาร์โค้ด ไม่ต้องทำอะไร
+        }
+      ).catch((err) => {
+        alert("ไม่สามารถเปิดกล้องได้: " + err);
+      });
+    }
+
+    // 3. ฟังก์ชันปิดกล้อง
+    function stopCamera() {
+      if (html5QrCode) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('scanner-container').style.display = "none";
+          document.getElementById('stopBtn').style.display = "none";
+          document.getElementById('startBtn').style.display = "inline-block";
+        }).catch((err) => {
+          console.error("Failed to stop camera.", err);
+        });
+      }
+    }
+
+    // 4. ฟังก์ชันส่งข้อมูลไปที่ Code.gs
+    function submitData() {
+      const barcode = document.getElementById('barcodeInput').value;
+      const qty = document.getElementById('qtyInput').value;
+      const resultDiv = document.getElementById('result');
+
+      if (!barcode) {
+        resultDiv.style.color = "red";
+        resultDiv.innerHTML = "❌ กรุณาสแกนบาร์โค้ดก่อน";
+        return;
+      }
+
+      resultDiv.style.color = "blue";
+      resultDiv.innerHTML = "กำลังบันทึกข้อมูล...";
+
+      google.script.run
+        .withSuccessHandler(function(response) {
+          resultDiv.style.color = "green";
+          resultDiv.innerHTML = "✅ " + response;
+          document.getElementById('barcodeInput').value = ""; 
+          document.getElementById('qtyInput').value = "1";
+        })
+        .saveOrder(barcode, qty);
+    }
+  </script>
+</body>
+</html>
